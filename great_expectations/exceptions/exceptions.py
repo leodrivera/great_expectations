@@ -56,6 +56,14 @@ class ValidationDefinitionError(DataContextError):
     pass
 
 
+class NoDataDocsError(DataContextError):
+    def __init__(self) -> None:
+        super().__init__(
+            "No Data Docs found. Please check that you have run a checkpoint, "
+            "and that the checkpoint has a UpdateDataDocsAction in its actions."
+        )
+
+
 class ValidationDefinitionNotFoundError(ValidationDefinitionError):
     def __init__(self, name: str) -> None:
         super().__init__(
@@ -453,3 +461,8 @@ class GXCloudConfigurationError(GreatExpectationsError):
 # Only used in tests
 class DatabaseConnectionError(GreatExpectationsError):
     """Error connecting to a database including during an integration test."""
+
+
+class SqlAddBatchDefinitionError(Exception):
+    def __init__(self, msg: str):
+        super().__init__(f"Failed adding batch definition: {msg}")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from typing import Any, Dict, List
+from unittest import mock
 
 import pytest
 
@@ -34,10 +35,13 @@ from great_expectations.expectations.metrics.metric_provider import (
 )
 from great_expectations.expectations.metrics.query_metric_provider import (
     QueryMetricProvider,
+    QueryParameters,
 )
 from great_expectations.expectations.metrics.table_metric_provider import (
     TableMetricProvider,
 )
+from great_expectations.expectations.metrics.util import MAX_RESULT_RECORDS
+from tests.expectations.metrics.conftest import MockResult, MockSqlAlchemyExecutionEngine
 
 pytestmark = pytest.mark.unit
 
@@ -371,3 +375,102 @@ def test__get_query_string_with_substituted_batch_parameters(input_query: str, e
         batch_subquery=batch_subquery,
     )
     assert actual_query == expected_query
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "query_parameters,expected_dict",
+    [
+        (
+            None,
+            {},
+        ),
+        (
+            QueryParameters(),
+            {},
+        ),
+        (
+            QueryParameters(column="my_column"),
+            {"column": "my_column"},
+        ),
+        (
+            QueryParameters(column_A="my_column_A", column_B="my_column_B"),
+            {"column_A": "my_column_A", "column_B": "my_column_B"},
+        ),
+        (
+            QueryParameters(columns=["my_column_A", "my_column_B", "my_column_C"]),
+            {"col_1": "my_column_A", "col_2": "my_column_B", "col_3": "my_column_C"},
+        ),
+    ],
+)
+def test__get_parameters_dict_from_query_parameters(
+    query_parameters: QueryParameters, expected_dict: dict
+):
+    actual_dict = QueryMetricProvider._get_parameters_dict_from_query_parameters(query_parameters)
+    assert actual_dict == expected_dict
+
+
+@pytest.mark.unit
+@mock.patch.object(sa, "text")
+@pytest.mark.parametrize(
+    "batch_selectable,expected_query",
+    [
+        (
+            sa.table("my_table"),
+            "SELECT my_column FROM (my_table) WHERE passenger_count > 7",
+        ),
+        (
+            sa.select("*").select_from(sa.text("my_table")).subquery(),
+            "SELECT my_column FROM (SELECT * \nFROM my_table) WHERE passenger_count > 7",
+        ),
+        (
+            sa.select("*").select_from(sa.text("my_table")),
+            "SELECT my_column FROM (SELECT * \nFROM my_table) AS subselect "
+            "WHERE passenger_count > 7",
+        ),
+    ],
+)
+def test_get_sqlalchemy_records_from_query_and_batch_selectable__query(
+    mock_sqlalchemy_text,
+    mock_sqlalchemy_execution_engine: MockSqlAlchemyExecutionEngine,
+    batch_selectable: sa.Selectable,
+    expected_query: str,
+):
+    mock_sqlalchemy_text.return_value = "*"
+    with mock.patch.object(mock_sqlalchemy_execution_engine, "execute_query"):
+        substituted_batch_subquery = (
+            QueryMetricProvider._get_substituted_batch_subquery_from_query_and_batch_selectable(
+                query="SELECT {column} FROM {batch} WHERE passenger_count > 7",
+                batch_selectable=batch_selectable,
+                execution_engine=mock_sqlalchemy_execution_engine,
+                query_parameters=QueryParameters(column="my_column"),
+            )
+        )
+        QueryMetricProvider._get_sqlalchemy_records_from_substituted_batch_subquery(
+            substituted_batch_subquery=substituted_batch_subquery,
+            execution_engine=mock_sqlalchemy_execution_engine,
+        )
+    assert substituted_batch_subquery == expected_query
+    mock_sqlalchemy_text.assert_called_with(expected_query)
+
+
+@pytest.mark.unit
+@mock.patch.object(MockResult, "fetchmany")
+def test_get_sqlalchemy_records_from_query_and_batch_selectable__record_count(
+    mock_sqlalchemy_fetchmany,
+    mock_sqlalchemy_execution_engine: MockSqlAlchemyExecutionEngine,
+):
+    mock_sqlalchemy_fetchmany.return_value = []
+    substituted_batch_subquery = (
+        QueryMetricProvider._get_substituted_batch_subquery_from_query_and_batch_selectable(
+            query="SELECT * FROM {batch} WHERE passenger_count > 7",
+            batch_selectable=sa.select("*").select_from(sa.text("my_table")).subquery(),
+            execution_engine=mock_sqlalchemy_execution_engine,
+            query_parameters=QueryParameters(column="my_column"),
+        )
+    )
+    QueryMetricProvider._get_sqlalchemy_records_from_substituted_batch_subquery(
+        substituted_batch_subquery=substituted_batch_subquery,
+        execution_engine=mock_sqlalchemy_execution_engine,
+    )
+    mock_sqlalchemy_fetchmany.assert_called_with(MAX_RESULT_RECORDS)
