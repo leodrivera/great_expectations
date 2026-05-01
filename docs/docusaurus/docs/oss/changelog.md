@@ -15,6 +15,9 @@ When we deprecate public functionality, we will
 
 Before we completely remove the functionality in a new major release, there will be at least one minor release that contains the deprecation so that you can smoothly transition.
 
+### Unreleased
+* [MAINTENANCE] Replace `gx-sqlalchemy-redshift` fork with upstream `sqlalchemy-redshift>=1.0.0`; remove `gx-redshift` extra ([#XXXX](https://github.com/great-expectations/great_expectations/pull/XXXX))
+
 ### 1.16.1
 * [FEATURE] Add Pact contract tests for datasource API coverage gaps ([#11813](https://github.com/great-expectations/great_expectations/pull/11813))
 * [BUGFIX] Fix ExpectColumnValuesToMatchStrftimeFormat failing with timezone-aware formats ([#11812](https://github.com/great-expectations/great_expectations/pull/11812)) (thanks @choinhet)
